@@ -1,0 +1,19 @@
+{
+  "name": "google-nodejs-ca-drivers-license-recognition-skill",
+  "version": "1.0.0",
+  "description": "Box Skill using Google's Cloud Vision API to process an image of a CA driver's license",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jedwardsjunior/google-nodejs-ca-drivers-license-recognition-skill.git"
+  },
+  "author": "jedwards",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/jedwardsjunior/google-nodejs-ca-drivers-license-recognition-skill/issues"
+  },
+  "homepage": "https://github.com/jedwardsjunior/google-nodejs-ca-drivers-license-recognition-skill#readme"
+}

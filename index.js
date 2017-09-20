@@ -6,12 +6,17 @@
  */
 
 // Load the required NPM modules
+const BoxSkillsMetadataBuilder = require('metadata-builder');
+const BoxSkillsMetadataSaver = require('metadata-saver');
 const BoxSDK = require('box-node-sdk');
 const GoogleCloudVision = require('@google-cloud/vision');
 const Unescape = require('unescape-js');
 
 // An array of all the features we're requesting Google Cloud Vision to return
 const features = [
+	{
+		type: GoogleCloudVision.v1.types.Feature.Type.LABEL_DETECTION
+	},
 	{
 		type: GoogleCloudVision.v1.types.Feature.Type.DOCUMENT_TEXT_DETECTION
 	},
@@ -26,49 +31,6 @@ const google_cloud_vision = new GoogleCloudVision({
 	}
 });
 
-// Super basic/specific text matching patterns (start, offset, stop/length) to fill in the CA Driver's License metadata fields
-const driversLicenseFields = {
-	'idNumber' : {
-		'start': 'LICENSE',
-		'offset': 11,
-		'numChars': 8
-	},
-	'firstName': {
-		'start': 'FN',
-		'offset': 3,
-		'stop': '\n'
-	},
-	'lastName': {
-		'start': 'LN',
-		'offset': 3,
-		'stop': 'FN'
-	},
-	'address': {
-		'start': 'FN',
-		'offset': 3,
-		'stop': 'DOB'
-	},
-	'gender': {
-		'start': 'SEX',
-		'offset': 4,
-		'numChars': 1
-	},
-	'dateOfBirth': {
-		'start': 'DOB',
-		'offset': 4,
-		'numChars': 10
-	},
-	'issuingDate': {
-		'start': 'ISSEE\nDD',
-		'offset': 31,
-		'numChars': 10
-	},
-	'expirationDate': {
-		'start': 'EXP',
-		'offset': 4,
-		'numChars': 10
-	}
-}
 
 /**
  * exports.handler()
@@ -94,13 +56,13 @@ exports.handler = (event, context, callback) => {
 		},
 	});
 
+	var enterpriseID = process.env.BOX_ENTERPRISE_ID;
 	var webhookData = JSON.parse(event.body);
-	var userID = webhookData.source.owned_by.id;
 	var fileID = webhookData.source.id;
 
-	var client = sdk.getAppAuthClient('user', userID);
+	var client = sdk.getAppAuthClient('enterprise', enterpriseID);
 	getAnnotations(client, fileID, (error, annotationImageResponse) => {
-	 	saveMetadata(client, fileID, getMetadataValueForDriversLicense(annotationImageResponse), 'caDriversLicenseBoxworksDemo', callback);
+		BoxSkillsMetadataSaver.saveMetadata(client, fileID, BoxSkillsMetadataBuilder.getMetadataValueForDriversLicense(annotationImageResponse), 'caDriversLicenseBoxworksDemo', callback);
     });
 };
 
@@ -146,89 +108,4 @@ const getAnnotations = (client, fileID, callback) => {
 			});
 		});
 	});
-}
-
-/**
- * saveMetadata()
- *
- * Helper function to save the metadata back to the file on Box.
- *
- * Inputs:
- * (Object) client - the Box API client that we will use to read in the file contents
- * (int) fileID - the ID of the image file to classify
- * (string) metadataValue - the formatted metadata to save back to Box
- * (function) callback - the function to call back to once finished
- *
- * Output:
- * (void)
- */
-const saveMetadata = (client, fileID, metadata, templateKey, callback) => {
-	client.files.addMetadata(fileID, 'enterprise', templateKey, metadata, (error, result) => {
-		if (error) {
-			console.log(error);
-			callback(error);
-		} else {
-			var response = {
-	        	statusCode: 200,
-	        	body: metadata
-	    	}
-
-	    	callback(null, response);
-		}
-	})
-}
-
-/**
- * getMetadataValueForDriversLicense()
- *
- * Helper function to extract the text found by the Google Cloud Vision API to the corresponding CA Driver's License field.
- *
- * Input:
- * (JSON) annotationImageResponse - the classifications found by the Cloud Vision API in JSON format
- *
- * Output:
- * (JSON) - the formatted metadata for the CA Driver's License
- */
-const getMetadataValueForDriversLicense = (annotationImageResponse) => {
-	var driversLicenseMetadata = {};
-
-	if (annotationImageResponse.hasOwnProperty('fullTextAnnotation')) {
-		var annotation = annotationImageResponse['fullTextAnnotation'];
-
-		if (annotation && annotation.hasOwnProperty('text')) {
-			var text = annotation.text;
-			var info = '';
-			for (var key in driversLicenseFields) {
-				var field = driversLicenseFields[key];
-				var start = text.indexOf(field['start']) + field['offset'];
-
-				// For the address, there's no good text to signal the beginning
-				// of the field. Instead we can add the length of the first name
-				// as an additional offset (since they are side-by-side)
-				if (key === 'address') {
-					start += driversLicenseMetadata['firstName'].length
-				}
-
-				var end = -1;
-				if (start > -1) {
-					if (field['stop']) {
-						// Stop at the occurrence of the "stop" string that first appears
-						// after the "start" string
-						end = text.indexOf(field['stop'], start);
-					} else {
-						// This field has a fixed number of characters
-						end = start + field['numChars'];
-					}
-
-					info = text.substring(start, end);
-					info = info.replace(new RegExp('/', 'g'), '-');
-				}
-
-				driversLicenseMetadata[key] = info;
-				info = '';
-			}
-		}
-	}
-
-	return driversLicenseMetadata;
 }
